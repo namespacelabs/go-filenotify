@@ -1,4 +1,4 @@
-package filenotify // import "github.com/docker/docker/pkg/filenotify"
+package filenotify
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestPollerAddRemove(t *testing.T) {
-	w := NewPollingWatcher()
+	w := NewPollingWatcher(nil)
 
 	if err := w.Add("no-such-file"); err == nil {
 		t.Fatal("should have gotten error when adding a non-existent file")
@@ -39,7 +39,7 @@ func TestPollerEvent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("No chmod on Windows")
 	}
-	w := NewPollingWatcher()
+	w := NewPollingWatcher(nil)
 
 	f, err := os.CreateTemp("", "test-poller")
 	if err != nil {
@@ -85,7 +85,7 @@ func TestPollerEvent(t *testing.T) {
 }
 
 func TestPollerClose(t *testing.T) {
-	w := NewPollingWatcher()
+	w := NewPollingWatcher(nil)
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}

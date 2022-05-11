@@ -1,13 +1,12 @@
-package filenotify // import "github.com/docker/docker/pkg/filenotify"
+package filenotify
 
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -36,6 +35,8 @@ type filePoller struct {
 	mu sync.Mutex
 	// closed is used to specify when the poller has already closed
 	closed bool
+	// debug is used to emit debugging messages.
+	debug io.Writer
 }
 
 // Add adds a filename to the list of watches
@@ -159,11 +160,14 @@ func (w *filePoller) watch(f *os.File, lastFi os.FileInfo, chClose chan struct{}
 		select {
 		case <-timer.C:
 		case <-chClose:
-			logrus.Debugf("watch for %s closed", f.Name())
+			if w.debug != nil {
+				fmt.Fprintf(w.debug, "filenotify/poller: watch for %s closed\n", f.Name())
+			}
 			return
 		}
 
-		fi, err := os.Stat(f.Name())
+		originalName := f.Name()
+		fi, err := os.Stat(originalName)
 		if err != nil {
 			// if we got an error here and lastFi is not set, we can presume that nothing has changed
 			// This should be safe since before `watch()` is called, a stat is performed, there is any error `watch` is not called
@@ -173,7 +177,7 @@ func (w *filePoller) watch(f *os.File, lastFi os.FileInfo, chClose chan struct{}
 			// If it doesn't exist at this point, it must have been removed
 			// no need to send the error here since this is a valid operation
 			if os.IsNotExist(err) {
-				if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Remove, Name: f.Name()}, chClose); err != nil {
+				if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Remove, Name: originalName}, chClose); err != nil {
 					return
 				}
 				lastFi = nil
@@ -187,7 +191,7 @@ func (w *filePoller) watch(f *os.File, lastFi os.FileInfo, chClose chan struct{}
 		}
 
 		if lastFi == nil {
-			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Create, Name: fi.Name()}, chClose); err != nil {
+			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Create, Name: originalName}, chClose); err != nil {
 				return
 			}
 			lastFi = fi
@@ -195,7 +199,7 @@ func (w *filePoller) watch(f *os.File, lastFi os.FileInfo, chClose chan struct{}
 		}
 
 		if fi.Mode() != lastFi.Mode() {
-			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Chmod, Name: fi.Name()}, chClose); err != nil {
+			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Chmod, Name: originalName}, chClose); err != nil {
 				return
 			}
 			lastFi = fi
@@ -203,7 +207,7 @@ func (w *filePoller) watch(f *os.File, lastFi os.FileInfo, chClose chan struct{}
 		}
 
 		if fi.ModTime() != lastFi.ModTime() || fi.Size() != lastFi.Size() {
-			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Write, Name: fi.Name()}, chClose); err != nil {
+			if err := w.sendEvent(fsnotify.Event{Op: fsnotify.Write, Name: originalName}, chClose); err != nil {
 				return
 			}
 			lastFi = fi
